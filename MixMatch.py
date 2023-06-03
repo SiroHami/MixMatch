@@ -11,16 +11,15 @@ import argparse
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
-import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 import torch.backends.cudnn as cudnn
 from torch.distributions import Beta
-import torchvision.datasets as datasets
+import torch.utils.data as data
 from metrics import accuracy
 from progress.bar import Bar as Bar
 
-from Mixmatch_CIFAR10 import get_cifar10_set, get_cifar10_loaders
+import Mixmatch_CIFAR10 as dataset
 from utils import AverageMeter, Logger, WeightEMA, mkdir_p, save_checkpoint
 from wrn_28_2 import WideResNet
 
@@ -273,36 +272,24 @@ def main():
 
     if not os.path.isdir(args.out):
         mkdir_p(args.out)
-    
-    #load data
-    print('==> Preparing data..')
-    
-    transform_labeled = ([
-        transforms.RandomCrop(32),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
+
+    # Data
+    print(f'==> Preparing cifar10')
+    transform_train = transforms.Compose([
+        dataset.RandomPadandCrop(32),
+        dataset.RandomFlip(),
+        dataset.ToTensor(),
     ])
 
-    transform_unlabeled = ([
-        transforms.RandomCrop(32),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
+    transform_val = transforms.Compose([
+        dataset.ToTensor(),
     ])
 
-    transform_val = ([
-        transforms.ToTensor(),])
-
-    train_labeled_set, train_unlabeled_set, val_set, test_set = get_cifar10_set('args.data_dir', 
-                                                                                transform_labeled=transform_labeled,
-                                                                                transform_unlabeled=transform_unlabeled,
-                                                                                transform_val=transform_val,
-                                                                                num_labels=args.num_labeled
-                                                                                )
-    train_labeled_loader, train_unlabeled_loader, val_loader, test_loader = get_cifar10_loaders(train_labeled_set, 
-                                                                                                train_unlabeled_set, 
-                                                                                                val_set, test_set,
-                                                                                                args.batch_size, 
-                                                                                                args.num_workers)
+    train_labeled_set, train_unlabeled_set, val_set, test_set = dataset.get_cifar10('./data', args.n_labeled, transform_train=transform_train, transform_val=transform_val)
+    labeled_trainloader = data.DataLoader(train_labeled_set, batch_size=args.batch_size, shuffle=True, num_workers=0, drop_last=True)
+    unlabeled_trainloader = data.DataLoader(train_unlabeled_set, batch_size=args.batch_size, shuffle=True, num_workers=0, drop_last=True)
+    val_loader = data.DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_workers=0)
+    test_loader = data.DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=0)
 
     #base model
     print('base model : WideResNet-28-2')
@@ -357,8 +344,8 @@ def main():
 
         print('\nEpoch: [%d | %d] LR: %f' % (epoch + 1, args.epochs, state['lr']))
 
-        train_loss = train(train_labeled_loader, train_unlabeled_loader, model, optimizer, ema_optimizer, use_cuda)
-        train_loss, train_top1 = validate(train_labeled_loader, ema_model, criterion, epoch, use_cuda, mode='Train Stats')
+        train_loss = train(labeled_trainloader, unlabeled_trainloader, model, optimizer, ema_optimizer, use_cuda)
+        train_loss, train_top1 = validate(labeled_trainloader, ema_model, criterion, epoch, use_cuda, mode='Train Stats')
         val_loss, val_top1 = validate(val_loader, ema_model, criterion, epoch, use_cuda, mode='Valid Stats')
         test_loss, test_top1 = validate(test_loader, ema_model, criterion, epoch, use_cuda, mode='Test Stats ')
 

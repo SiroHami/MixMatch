@@ -6,6 +6,7 @@ __all__ = ['get_cifar10_set', 'get_cifar10_loaders']
 
 
 import numpy as np
+import torch
 import torch.utils.data as data
 import torchvision
 import torchvision.transforms as transforms
@@ -38,19 +39,19 @@ def Kth_transform(transform, K):
     return transform
 
 
-def get_cifar10_set(root, transform_labeled, transform_unlabeled, transform_val, num_labels, K=2):
+def get_cifar10_set(root, transform_labeled, transform_val, num_labels, K=2):
 
     base_dataset = CIFAR10(root, train=True, download=True)
 
     train_labeled_idxs, train_unlabeled_idxs, val_idxs = label_unlabel_val_split(base_dataset.targets, int(num_labels/10))
 
-    train_labeled_dataset = CIFAR10_labeled(root, train_labeled_idxs, train=True, transform=transforms.Compose(transform_labeled))
+    train_labeled_dataset = CIFAR10_labeled(root, train_labeled_idxs, train=True, transform=transform_labeled)
 
-    train_unlabeled_dataset = CIFAR10_unlabeled(root, train_unlabeled_idxs, train=True, transform=transforms.Compose(Kth_transform(transform_unlabeled, K)))
+    train_unlabeled_dataset = CIFAR10_unlabeled(root, train_unlabeled_idxs, train=True, transform=Kth_transform(transform_labeled))
 
-    val_dataset = CIFAR10_labeled(root, val_idxs, train=True, transform=transforms.Compose(transform_val), download=True)
+    val_dataset = CIFAR10_labeled(root, val_idxs, train=True, transform=transform_val, download=True)
 
-    test_dataset = CIFAR10_labeled(root,  train=False, transform=transforms.Compose(transform_val), download=True)
+    test_dataset = CIFAR10_labeled(root,  train=False, transform=transform_val, download=True)
 
     print (f"#Labeled: {len(train_labeled_idxs)} #Unlabeled: {len(train_unlabeled_idxs)} #Val: {len(val_idxs)}")
 
@@ -100,7 +101,7 @@ def get_cifar10_loaders(train_labeled_dataset,
 class CIFAR10_labeled(torchvision.datasets.CIFAR10):
 
     def __init__(self, root, indexs=None, train=True,
-                 transform=None, target_transform=transforms.ToTensor(),
+                 transform=None, target_transform=None,
                  download=False):
         super(CIFAR10_labeled, self).__init__(root, train=train,
                  transform=transform, target_transform=target_transform,
@@ -138,3 +139,68 @@ class CIFAR10_unlabeled(CIFAR10_labeled):
                  transform=transform, target_transform=target_transform,
                  download=download)
         self.targets = np.array([-1 for i in range(len(self.targets))])
+
+def normalize(x, mean=(0.4914, 0.4822, 0.4465), std=(0.2471, 0.2435, 0.2616)):
+    x, mean, std = [np.array(a, np.float32) for a in (x, mean, std)]
+    x -= mean*255
+    x *= 1.0/(255*std)
+    return x
+
+def transpose(x, source='NHWC', target='NCHW'):
+    return x.transpose([source.index(d) for d in target]) 
+
+def pad(x, border=4):
+    return np.pad(x, [(0, 0), (border, border), (border, border)], mode='reflect')
+
+class RandomPadandCrop(object):
+    """Crop randomly the image.
+
+    Args:
+        output_size (tuple or int): Desired output size. If int, square crop
+            is made.
+    """
+
+    def __init__(self, output_size):
+        assert isinstance(output_size, (int, tuple))
+        if isinstance(output_size, int):
+            self.output_size = (output_size, output_size)
+        else:
+            assert len(output_size) == 2
+            self.output_size = output_size
+
+    def __call__(self, x):
+        x = pad(x, 4)
+
+        h, w = x.shape[1:]
+        new_h, new_w = self.output_size
+
+        top = np.random.randint(0, h - new_h)
+        left = np.random.randint(0, w - new_w)
+
+        x = x[:, top: top + new_h, left: left + new_w]
+
+        return x
+
+class RandomFlip(object):
+    """Flip randomly the image.
+    """
+    def __call__(self, x):
+        if np.random.rand() < 0.5:
+            x = x[:, :, ::-1]
+
+        return x.copy()
+
+class GaussianNoise(object):
+    """Add gaussian noise to the image.
+    """
+    def __call__(self, x):
+        c, h, w = x.shape
+        x += np.random.randn(c, h, w) * 0.15
+        return x
+
+class ToTensor(object):
+    """Transform the image to tensor.
+    """
+    def __call__(self, x):
+        x = torch.from_numpy(x)
+        return x
