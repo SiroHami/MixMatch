@@ -161,22 +161,22 @@ def train(train_labeled_loader,
     ws = AverageMeter()
     end = time.time()
 
-    bar = Bar('Processing', max=args.train_iter)
+    bar = Bar('Processing', max=args.train_iteration)
     train_labeled_iter = iter(train_labeled_loader)
     train_unlabeled_iter = iter(train_unlabeled_loader)
 
     model.train()
-    for batch_idx in range(args.train_iter):
+    for batch_idx in range(args.train_iteration):
         try:
-            inputs_x, targets_x = labeled_train_iter.next()
+            inputs_x, targets_x = next(labeled_train_iter)
         except:
             labeled_train_iter = iter(train_labeled_iter)
-            inputs_x, targets_x = labeled_train_iter.next()        
+            inputs_x, targets_x = next(labeled_train_iter)
         try:
-            inputs_u = train_unlabeled_iter.next()
+            inputs_u = next(train_unlabeled_iter)
         except:
             unlabeled_train_iter = iter(train_unlabeled_iter)
-            inputs_u = unlabeled_train_iter.next()
+            inputs_u = next(unlabeled_train_iter)
 
         
         data_time.update(time.time() - end)
@@ -319,15 +319,19 @@ def main():
                                                                                 transform_val=transform_val,
                                                                                 num_labels=args.num_labeled
                                                                                 )
-    train_labeled_loader, train_unlabeled_loader, val_loader, test_loader = get_cifar10_loaders(train_labeled_set, train_unlabeled_set, val_set, test_set, args.batch_size, args.num_workers)
+    train_labeled_loader, train_unlabeled_loader, val_loader, test_loader = get_cifar10_loaders(train_labeled_set, 
+                                                                                                train_unlabeled_set, 
+                                                                                                val_set, test_set,
+                                                                                                args.batch_size, 
+                                                                                                args.num_workers)
 
     #base model
     print('base model : WideResNet-28-2')
 
-    def get_model(eam=False):
+    def get_model(ema=False):
         model = WideResNet(num_classes=10)
         model = model.cuda()
-        if eam:
+        if ema:
             for param in model.parameters():
                 param.detach_()
 
@@ -340,7 +344,7 @@ def main():
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
-    ema_optimizer= WeightEMA(model, ema_model, alpha=args.ema_decay)
+    ema_optimizer= WeightEMA(model, ema_model, alpha=args.ema_decay, lr=args.lr)
     start_epoch = 0
 
     cudnn.benchmark = True
@@ -374,10 +378,10 @@ def main():
 
         print('\nEpoch: [%d | %d] LR: %f' % (epoch + 1, args.epochs, state['lr']))
 
-        train_loss, train_loss_x, train_loss_u = train(train_labeled_loader, train_unlabeled_loader, model, optimizer, ema_optimizer, train_criterion, epoch, use_cuda)
-        _, train_acc = validate(train_labeled_loader, ema_model, criterion, epoch, use_cuda, mode='Train Stats')
-        val_loss, val_acc = validate(val_loader, ema_model, criterion, epoch, use_cuda, mode='Valid Stats')
-        test_loss, test_acc = validate(test_loader, ema_model, criterion, epoch, use_cuda, mode='Test Stats ')
+        train_loss = train(train_labeled_loader, train_unlabeled_loader, model, optimizer, ema_optimizer, use_cuda)
+        train_loss, train_top1 = validate(train_labeled_loader, ema_model, criterion, epoch, use_cuda, mode='Train Stats')
+        val_loss, val_top1 = validate(val_loader, ema_model, criterion, epoch, use_cuda, mode='Valid Stats')
+        test_loss, test_top1 = validate(test_loader, ema_model, criterion, epoch, use_cuda, mode='Test Stats ')
 
         step = args.train_iteration * (epoch + 1)
 
@@ -385,25 +389,25 @@ def main():
         writer.add_scalar('losses/valid_loss', val_loss, step)
         writer.add_scalar('losses/test_loss', test_loss, step)
 
-        writer.add_scalar('accuracy/train_acc', train_acc, step)
-        writer.add_scalar('accuracy/val_acc', val_acc, step)
-        writer.add_scalar('accuracy/test_acc', test_acc, step)
+        writer.add_scalar('accuracy/train_acc', train_top1, step)
+        writer.add_scalar('accuracy/val_acc', val_top1, step)
+        writer.add_scalar('accuracy/test_acc', test_top1, step)
 
         # append logger file
-        logger.append([train_loss, train_loss_x, train_loss_u, val_loss, val_acc, test_loss, test_acc])
+        logger.append([train_loss, train_loss, train_top1, val_loss, val_top1, test_loss, test_top1])
 
         # save model
-        is_best = val_acc > best_acc
-        best_acc = max(val_acc, best_acc)
+        is_best = val_top1 > best_acc
+        best_acc = max(val_top1, best_acc)
         save_checkpoint({
                 'epoch': epoch + 1,
                 'state_dict': model.state_dict(),
                 'ema_state_dict': ema_model.state_dict(),
-                'acc': val_acc,
+                'top1': val_top1,
                 'best_acc': best_acc,
                 'optimizer' : optimizer.state_dict(),
             }, is_best)
-        test_accs.append(test_acc)
+        test_accs.append(test_top1)
 
 
 
@@ -414,7 +418,7 @@ def main():
     print(best_acc)
 
     print('Mean acc:')
-    print(np.mean(test_accs[-20:]))
+    print(torch.mean(test_accs[-20:]))
 
 
 if __name__ == '__main__':
