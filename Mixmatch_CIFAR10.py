@@ -35,11 +35,16 @@ def label_unlabel_val_split(labels, n_labeled_per_class):
 
 
 def Kth_transform(transform, K):
-    transform = transform * K
+    if K == 2:
+        transform = transforms.Compose([
+            transforms.Compose([
+                RandomPadandCrop(32),
+                RandomFlip(),])
+        ])
     return transform
 
 
-def get_cifar10_set(root, transform_labeled, transform_val, num_labels, K=2):
+def get_cifar10_set(root, num_labels, transform_labeled, transform_val,  K=2):
 
     base_dataset = CIFAR10(root, train=True, download=True)
 
@@ -47,7 +52,7 @@ def get_cifar10_set(root, transform_labeled, transform_val, num_labels, K=2):
 
     train_labeled_dataset = CIFAR10_labeled(root, train_labeled_idxs, train=True, transform=transform_labeled)
 
-    train_unlabeled_dataset = CIFAR10_unlabeled(root, train_unlabeled_idxs, train=True, transform=Kth_transform(transform_labeled))
+    train_unlabeled_dataset = CIFAR10_unlabeled(root, train_unlabeled_idxs, train=True, transform=Kth_transform(transform_labeled, K))
 
     val_dataset = CIFAR10_labeled(root, val_idxs, train=True, transform=transform_val, download=True)
 
