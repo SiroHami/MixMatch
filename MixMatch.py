@@ -93,34 +93,15 @@ def mixup(x1, x2, x1_label, x2_label, alpha):
     return x, y
 
 #agumentation function
-def mixmatch_augmenter():
-    img =transforms.Comopse(
-        transforms.RandomHorizontalFlip(p=0.5),
-        transforms.RandomCrop(size=(0, 0.1)),
-        transforms.RandomApply([
-            transforms.GaussianBlur(kernel_size=23, sigma=(0, 0.5))], 
-            transforms.GaussianNoise(mean=0, std=(0.0, 0.05), p=1),
-            transforms.RandomAffine(
-                degrees=(-25, 25),
-                translate=(0.2, 0.2),
-                scale=(0.8, 1.2),
-                shear=(-8, 8)),
-                  p=1.0))
-    def agument(img):
-        imgs = []
-        for i in range(img.shape[0]):
-            imgs.append(img[i,:,:,:])
 
-        return imgs
-    return agument()
 
-def MixMatch(x, y, u, T, K, alpha, num_classes, model, mixmatch_agumenter):
+def MixMatch(x, y, u, T, K, alpha, num_classes, model):
     #one hot label of x
     y_oh = onehot(y, num_classes)
     # label data agumentation
-    xhat = mixmatch_agumenter(x)
+    xhat = x
     #unlabel data agumentation * K
-    uhat = [mixmatch_agumenter(u)for _ in range(K)]
+    uhat = u
     #label guessing
     qb =torch.mean(label_guessing(model, uhat, K), axis=0)
     #sharpening
@@ -173,7 +154,6 @@ def train(labeled_trainloader,
         except:
             labeled_train_iter = iter(labeled_trainloader)
             inputs_x, targets_x = next(labeled_train_iter)
-
         try:
             inputs_u= next(unlabeled_train_iter)
         except:
@@ -192,8 +172,7 @@ def train(labeled_trainloader,
         X, X_label, U, U_label = MixMatch(x=inputs_x, y=targets_x, u=inputs_u,
                                            T=args.T, K=args.K, alpha=args.alpha, 
                                            num_classes=num_classes,
-                                           model=model, 
-                                           mixmatch_agumenter=mixmatch_augmenter())
+                                           model=model)
         
         Loss = MixMatchLoss(X, X_label, U, U_label)
 
@@ -313,7 +292,7 @@ def main():
     transform_val = ([
         transforms.ToTensor(),])
 
-    train_labeled_set, train_unlabeled_set, val_set, test_set = get_cifar10_set(args.data_dir, 
+    train_labeled_set, train_unlabeled_set, val_set, test_set = get_cifar10_set('args.data_dir', 
                                                                                 transform_labeled=transform_labeled,
                                                                                 transform_unlabeled=transform_unlabeled,
                                                                                 transform_val=transform_val,
