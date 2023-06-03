@@ -4,8 +4,7 @@ Data Loader
 
 __all__ = ['get_cifar10_set', 'get_cifar10_loaders']
 
-import os
-import math
+
 import numpy as np
 import torch.utils.data as data
 import torchvision
@@ -87,23 +86,21 @@ def get_cifar10_loaders(train_labeled_dataset,
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=pin_memory,
-        drop_last=False)
+        pin_memory=pin_memory,)
     
     test_loader = data.DataLoader(
         test_dataset,
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=pin_memory,
-        drop_last=False)
+        pin_memory=pin_memory,)
     
     return labeled_trainloader, unlabeled_trainloader, val_loader, test_loader
 
 class CIFAR10_labeled(torchvision.datasets.CIFAR10):
 
     def __init__(self, root, indexs=None, train=True,
-                 transform=None, target_transform=None,
+                 transform=None, target_transform=transforms.ToTensor(),
                  download=False):
         super(CIFAR10_labeled, self).__init__(root, train=train,
                  transform=transform, target_transform=target_transform,

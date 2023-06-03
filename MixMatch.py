@@ -41,7 +41,7 @@ parser.add_argument('--ema-decay', default=0.999, type=float, help='ema variable
 parser.add_argument('--epochs', default=1024, type=int, help='number of total epochs to run')
 parser.add_argument('--start_epoch', default=0, type=int, help='manual epoch number (useful on restarts)')
 parser.add_argument('--num_val', default=5000, type=int, help='number of validation data')
-parser.add_argument('--num_workers', default=4, type=int, help='number of workers')
+parser.add_argument('--num_workers', default=0, type=int, help='number of workers')
 
 parser.add_argument('--resume', default='', type=str, help='path to latest checkpoint (default: none)')
 parser.add_argument('--out', default='result', type=str, help='folder to output images and model checkpoints')
@@ -146,8 +146,8 @@ class MixMatchLoss(nn.Module):
         return x_criteroion + self.lam_u * u_criterion
 
 
-def train(train_labeled_loader,
-          train_unlabeled_loader,
+def train(labeled_trainloader, 
+          unlabeled_trainloader,
           model,
           optimizer,
           ema_optimizer,
@@ -162,22 +162,23 @@ def train(train_labeled_loader,
     end = time.time()
 
     bar = Bar('Processing', max=args.train_iteration)
-    train_labeled_iter = iter(train_labeled_loader)
-    train_unlabeled_iter = iter(train_unlabeled_loader)
+    labeled_train_iter = iter(labeled_trainloader)
+    unlabeled_train_iter = iter(unlabeled_trainloader)
+
 
     model.train()
     for batch_idx in range(args.train_iteration):
         try:
-            inputs_x, targets_x = next(labeled_train_iter)
+            inputs_x, targets_x = labeled_train_iter.next()
         except:
-            labeled_train_iter = iter(train_labeled_iter)
-            inputs_x, targets_x = next(labeled_train_iter)
-        try:
-            inputs_u = next(train_unlabeled_iter)
-        except:
-            unlabeled_train_iter = iter(train_unlabeled_iter)
-            inputs_u = next(unlabeled_train_iter)
+            labeled_train_iter = iter(labeled_trainloader)
+            inputs_x, targets_x = labeled_train_iter.next()
 
+        try:
+            (inputs_u, inputs_u2), _ = unlabeled_train_iter.next()
+        except:
+            unlabeled_train_iter = iter(unlabeled_trainloader)
+            (inputs_u, inputs_u2), _ = unlabeled_train_iter.next()
         
         data_time.update(time.time() - end)
 
@@ -297,21 +298,20 @@ def main():
     #load data
     print('==> Preparing data..')
     
-    transform_labeled = [
+    transform_labeled = ([
         transforms.RandomCrop(32),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
-    ]
+    ])
 
-    transform_unlabeled = [
+    transform_unlabeled = ([
         transforms.RandomCrop(32),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
-    ]
+    ])
 
-    transform_val = [
-        transforms.ToTensor(),
-    ]
+    transform_val = ([
+        transforms.ToTensor(),])
 
     train_labeled_set, train_unlabeled_set, val_set, test_set = get_cifar10_set(args.data_dir, 
                                                                                 transform_labeled=transform_labeled,
