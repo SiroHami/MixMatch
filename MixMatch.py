@@ -34,7 +34,7 @@ parser.add_argument('--data_dir', default='data', type=str, help='data directory
 parser.add_argument('--num_classes', default=10, type=int, help='number of classes')
 parser.add_argument('--num_labeled', default=250, type=int, help='number of labeled data')
 
-parser.add_argument('--batch_size', default=64, type=int, help='train batchsize')
+parser.add_argument('--batch_size', default=32, type=int, help='train batchsize')
 parser.add_argument('--lr', '--learning_rate', default=0.002, type=float, help='initial learning rate')
 parser.add_argument('--ema-decay', default=0.999, type=float, help='ema variable decay rate')
 parser.add_argument('--epochs', default=1024, type=int, help='number of total epochs to run')
@@ -96,11 +96,11 @@ def mixup(x1, x2, x1_label, x2_label, alpha):
 
 def MixMatch(x, y, u, T, K, alpha, num_classes, model):
     #one hot label of x
-    y_oh = onehot(y, num_classes)
+    y_oh = y.cuda()
     # label data agumentation
-    xhat = x
+    xhat = x.cuda()
     #unlabel data agumentation * K
-    uhat = u
+    uhat = np.aaray(u)
     #label guessing
     qb =torch.mean(label_guessing(model, uhat, K), axis=0)
     #sharpening
@@ -161,11 +161,9 @@ def train(labeled_trainloader,
         
         data_time.update(time.time() - end)
 
-        targets_x = onehot(targets_x, num_classes)
 
         if use_cuda:
             inputs_x, targets_x = inputs_x.cuda(), targets_x.cuda(non_blocking=True)
-            inputs_u = inputs_u.cuda()
         
         #mixmatch
         X, X_label, U, U_label = MixMatch(x=inputs_x, y=targets_x, u=inputs_u,
